@@ -1,0 +1,23 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - IMAGE_TAG="${CODEBUILD_RESOLVED_SOURCE_VERSION:0:12}-${CODEBUILD_BUILD_NUMBER}"
+      - REGISTRY="${METABASE_REPOSITORY_URI%%/*}"
+      - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+  build:
+    on-failure: RETRY-3
+    commands:
+      - docker build --platform linux/arm64 --build-arg "METABASE_VERSION=$METABASE_VERSION" -t "$METABASE_REPOSITORY_URI:$IMAGE_TAG" -f Dockerfile .
+  post_build:
+    commands:
+      - test "$CODEBUILD_BUILD_SUCCEEDING" = "1"
+      - docker push "$METABASE_REPOSITORY_URI:$IMAGE_TAG"
+      - printf '[{"name":"metabase","imageUri":"%s:%s"}]' "$METABASE_REPOSITORY_URI" "$IMAGE_TAG" > imagedefinitions-main.json
+      - printf '{"image_tag":"%s"}' "$IMAGE_TAG" > release.json
+
+artifacts:
+  files:
+    - imagedefinitions-main.json
+    - release.json
